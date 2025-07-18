@@ -6,6 +6,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { AnchorProvider, Program, web3 } from "@coral-xyz/anchor";
 import idl from "../../anchor/target/idl/notes_app.json";
 import toast from "react-hot-toast";
+import { WalletSignTransactionError } from "@solana/wallet-adapter-base";
 
 const PROGRAM_ID = new PublicKey("A1mqt2qGaBxy7yz3oX2nrxoovG9CgshHQSzyfEVdEZUg");
 const connection = new Connection("https://api.devnet.solana.com");
@@ -31,7 +32,7 @@ export default function NotesApp() {
 
   const program = useMemo(() => {
     if (!provider) return null;
-    return new Program(idl as any, PROGRAM_ID, provider);
+    return new Program(idl as Idl, provider);
   }, [provider]);
 
   const getNotePDA = async (noteTitle: string, user: PublicKey) => {
@@ -47,20 +48,17 @@ export default function NotesApp() {
       const [notePda] = await getNotePDA(title, wallet.publicKey);
       await program.methods
         .createNote(title, message)
-        .accounts({
-          note: notePda,
-          owner: wallet.publicKey,
-          systemProgram: web3.SystemProgram.programId,
-        })
+        .accounts({ note: notePda, owner: wallet.publicKey, systemProgram: web3.SystemProgram.programId })
         .rpc();
-
       toast.success("Note created!");
-      setNotes([{ title, message }, ...notes]);
-      setTitle("");
-      setMessage("");
+      // …
     } catch (err: any) {
+      if (err instanceof WalletSignTransactionError) {
+        toast.error("You cancelled the transaction."); 
+      } else {
+        toast.error(err.message);
+      }
       console.error(err);
-      toast.error(err.message);
     }
   };
 
