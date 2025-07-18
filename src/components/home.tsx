@@ -3,19 +3,17 @@
 import { useState, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { AnchorProvider, Program, web3 } from "@coral-xyz/anchor";
+import { AnchorProvider, Program, web3, Idl } from "@coral-xyz/anchor";
 import idl from "../../anchor/target/idl/notes_app.json";
 import toast from "react-hot-toast";
 import { WalletSignTransactionError } from "@solana/wallet-adapter-base";
 
-const PROGRAM_ID = new PublicKey("A1mqt2qGaBxy7yz3oX2nrxoovG9CgshHQSzyfEVdEZUg");
+const PROGRAM_ID = new PublicKey(
+  "A1mqt2qGaBxy7yz3oX2nrxoovG9CgshHQSzyfEVdEZUg"
+);
 const connection = new Connection("https://api.devnet.solana.com");
 
 export default function NotesApp() {
-  console.log("IDL typeof:", typeof idl);
-  console.log("IDL keys:", Object.keys(idl));
-  console.log("First instruction kind (should exist):", idl?.types?.[0]?.type?.kind);
-
   const wallet = useWallet();
 
   const [title, setTitle] = useState("");
@@ -26,8 +24,10 @@ export default function NotesApp() {
   const [editMessage, setEditMessage] = useState("");
 
   const provider = useMemo(() => {
-    if (!wallet?.publicKey) return null;
-    return new AnchorProvider(connection, wallet as any, { commitment: "processed" });
+    if (!wallet.publicKey) return null;
+    return new AnchorProvider(connection, wallet as any, {
+      commitment: "processed",
+    });
   }, [wallet]);
 
   const program = useMemo(() => {
@@ -35,26 +35,44 @@ export default function NotesApp() {
     return new Program(idl as Idl, provider);
   }, [provider]);
 
-  const getNotePDA = async (noteTitle: string, user: PublicKey) => {
-    return await PublicKey.findProgramAddressSync(
+  const getNotePDA = (noteTitle: string, user: PublicKey) =>
+    PublicKey.findProgramAddressSync(
       [Buffer.from(noteTitle), user.toBuffer()],
       PROGRAM_ID
     );
-  };
 
   const createNote = async () => {
     if (!title || !message || !wallet.publicKey || !program) return;
+
     try {
-      const [notePda] = await getNotePDA(title, wallet.publicKey);
+      const [notePda] = getNotePDA(title, wallet.publicKey);
+
+      // generate a fresh Keypair so the tx hash changes
+      const dummy = web3.Keypair.generate();
+
       await program.methods
         .createNote(title, message)
-        .accounts({ note: notePda, owner: wallet.publicKey, systemProgram: web3.SystemProgram.programId })
+        .accounts({
+          note: notePda,
+          owner: wallet.publicKey,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        .postInstructions([
+          web3.SystemProgram.transfer({
+            fromPubkey: wallet.publicKey,
+            toPubkey: dummy.publicKey,
+            lamports: 1,
+          }),
+        ])
         .rpc();
+
       toast.success("Note created!");
-      // …
+      setNotes([{ title, message }, ...notes]);
+      setTitle("");
+      setMessage("");
     } catch (err: any) {
       if (err instanceof WalletSignTransactionError) {
-        toast.error("You cancelled the transaction."); 
+        toast.error("You cancelled the transaction.");
       } else {
         toast.error(err.message);
       }
@@ -63,11 +81,20 @@ export default function NotesApp() {
   };
 
   const saveEdit = async () => {
-    if (editingIndex === null || !wallet.publicKey || !program) return;
+    if (
+      editingIndex === null ||
+      !wallet.publicKey ||
+      !program ||
+      !notes[editingIndex]
+    )
+      return;
+
     const updatedTitle = notes[editingIndex].title;
-    const [notePda] = await getNotePDA(updatedTitle, wallet.publicKey);
+    const [notePda] = getNotePDA(updatedTitle, wallet.publicKey);
 
     try {
+      const dummy = web3.Keypair.generate();
+
       await program.methods
         .updateNote(updatedTitle, editMessage)
         .accounts({
@@ -75,10 +102,20 @@ export default function NotesApp() {
           owner: wallet.publicKey,
           systemProgram: web3.SystemProgram.programId,
         })
+        .postInstructions([
+          web3.SystemProgram.transfer({
+            fromPubkey: wallet.publicKey,
+            toPubkey: dummy.publicKey,
+            lamports: 1,
+          }),
+        ])
         .rpc();
 
       const updatedNotes = [...notes];
-      updatedNotes[editingIndex] = { title: updatedTitle, message: editMessage };
+      updatedNotes[editingIndex] = {
+        title: updatedTitle,
+        message: editMessage,
+      };
       setNotes(updatedNotes);
       toast.success("Note updated!");
       setEditingIndex(null);
@@ -93,7 +130,7 @@ export default function NotesApp() {
   const deleteNote = async (index: number) => {
     if (!wallet.publicKey || !program) return;
     const noteToDelete = notes[index];
-    const [notePda] = await getNotePDA(noteToDelete.title, wallet.publicKey);
+    const [notePda] = getNotePDA(noteToDelete.title, wallet.publicKey);
 
     try {
       await program.methods
@@ -105,9 +142,9 @@ export default function NotesApp() {
         })
         .rpc();
 
-      const updatedNotes = [...notes];
-      updatedNotes.splice(index, 1);
-      setNotes(updatedNotes);
+      const updated = [...notes];
+      updated.splice(index, 1);
+      setNotes(updated);
       toast.success("Note deleted!");
     } catch (err: any) {
       console.error(err);
@@ -115,10 +152,10 @@ export default function NotesApp() {
     }
   };
 
-  const startEdit = (index: number) => {
-    setEditingIndex(index);
-    setEditTitle(notes[index].title);
-    setEditMessage(notes[index].message);
+  const startEdit = (idx: number) => {
+    setEditingIndex(idx);
+    setEditTitle(notes[idx].title);
+    setEditMessage(notes[idx].message);
   };
 
   return (
@@ -138,14 +175,12 @@ export default function NotesApp() {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
         />
-        <div>
-          <button
-            onClick={createNote}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            Create
-          </button>
-        </div>
+        <button
+          onClick={createNote}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          Create
+        </button>
       </div>
 
       {notes.length > 0 ? (
