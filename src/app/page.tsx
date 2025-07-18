@@ -1,5 +1,11 @@
-import { DashboardFeature } from '@/components/dashboard/dashboard-feature'
-
-export default function Home() {
-  return <DashboardFeature />
+import React from 'react'
+import home from '@/components/home'
+const page = () => {
+  return (
+    <div>
+      <home />
+    </div>
+  )
 }
+
+export default page
