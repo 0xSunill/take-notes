@@ -3,7 +3,10 @@ package_manager = "yarn"
 
 [features]
 resolution = true
+seeds = true
+init-if-needed = true
 skip-lint = false
+
 
 [programs.localnet]
 notes = "A1mqt2qGaBxy7yz3oX2nrxoovG9CgshHQSzyfEVdEZUg"
@@ -12,7 +15,7 @@ notes = "A1mqt2qGaBxy7yz3oX2nrxoovG9CgshHQSzyfEVdEZUg"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "https://api.devnet.solana.com"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
