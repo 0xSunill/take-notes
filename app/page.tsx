@@ -3,10 +3,10 @@
 
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-
+import { Idl, Wallet } from "@project-serum/anchor";
 const PROGRAM_ID = new PublicKey("BdUTLSpMArGqxZyUjZYbeFUfoaCCyHizEjkXfiNSTLCf")
-import { AnchorProvider, Program, Wallet } from "@project-serum/anchor";
-import { useEffect, useState } from "react";
+import { AnchorProvider, Program } from "@project-serum/anchor";
+import { useCallback, useEffect, useState } from "react";
 const IDL = {
   "version": "0.1.0",
   "name": "notes",
@@ -123,19 +123,27 @@ const IDL = {
 }
 import { toast } from "sonner";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Archive, Edit, MoreHorizontal, Palette, Pin, Trash2 } from "lucide-react";
+import { Edit, Trash2 } from "lucide-react";
 
+type Note = {
+  publicKey: PublicKey;
+  account: {
+    title: string;
+    message: string;
+  };
+};
 
 export default function Home() {
   const { connection } = useConnection()
   const wallet = useWallet()
-  const [notes, setNotes] = useState<any[]>([])
+  const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(false)
   const [title, setTitle] = useState("")
   const [message, setMessage] = useState("")
   const [edtTitle, setEdtTitle] = useState("")
   const [edtMessage, setEdtMessage] = useState("")
   const isFormValid = title.trim() !== "" && message.trim() !== "";
+
 
   const getNoteAddress = (title: string) => {
     if (!wallet.publicKey || !wallet.signTransaction) return null;
@@ -145,37 +153,41 @@ export default function Home() {
     );
     return noteAddress;
   }
-  const getProgram = () => {
-    if (!wallet.publicKey || !wallet.signTransaction) return null;
-    const provider = new AnchorProvider(connection, wallet as any, {});
-    return new Program(IDL as any, PROGRAM_ID, provider);
-  }
+  const getProgram = useCallback(() => {
+    if (!wallet) return null;
+    return new Program(
+      IDL as Idl,
+      PROGRAM_ID,
+      new AnchorProvider(connection, wallet as Wallet, {})
+    );
+  }, [wallet, connection]);
 
-
-  const loadNotes = async () => {
-    if (!wallet.publicKey) return;
+  const loadNotes = useCallback(async () => {
+    if (!wallet?.publicKey) return;
 
     setLoading(true);
     try {
       const program = getProgram();
       if (!program) return;
-      const notes = await program.account.noteState.all([
-        {
-          memcmp: {
-            offset: 8,
-            bytes: wallet.publicKey.toBase58(),
-          }
-        }
-      ])
 
-      setNotes(notes);
-    } catch (error) {
-      console.log(`error loading the notes ${error}`)
-      toast.error(`error loading the notes ${error}`)
+      const raw = await program.account.noteState.all([{
+        memcmp: { offset: 8, bytes: wallet.publicKey.toBase58() }
+      }]);
 
+      const formatted: Note[] = raw.map((n) => ({
+        publicKey: n.publicKey,
+        account: { title: n.account.title, message: n.account.message }
+      }));
+
+      setNotes(formatted);
+    } catch (err) {
+      console.error("error loading notes", err);
+      toast.error("error loading notes");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }
+  }, [wallet?.publicKey, getProgram]);
+
 
   const createNote = async () => {
 
@@ -193,7 +205,7 @@ export default function Home() {
       toast.error("message is too long max length is 1000 char")
       return
     }
-    toast.success("Note created successfully!");
+
     setLoading(true)
     try {
       const program = getProgram();
@@ -224,7 +236,7 @@ export default function Home() {
   }
 
 
-  const updateNote = async (note: any) => {
+  const updateNote = async (note: Note) => {
     if (!edtMessage.trim()) {
       toast.error("Message can’t be empty");
       return;
@@ -264,7 +276,7 @@ export default function Home() {
 
 
 
-  const deleteNote = async (note: any) => {
+  const deleteNote = async (note: Note) => {
     setLoading(true)
     try {
       const program = getProgram();
@@ -283,7 +295,7 @@ export default function Home() {
         .rpc();
       toast.success("Note deleted");
 
-
+      await loadNotes();
     } catch (error) {
       console.log(`error deletinng the notes ${error}`)
       toast.error(`error deletinng the notes ${error}`)
@@ -292,10 +304,10 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (wallet.connected) {
+    if (wallet?.connected) {
       loadNotes();
     }
-  }, [wallet.connected])
+  }, [wallet?.connected]);
 
   if (!wallet.connected) {
     return (
@@ -343,7 +355,7 @@ export default function Home() {
 
 
       <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {notes.map((note: any) => (
+        {notes.map((note: Note) => (
           <Card
             key={note.publicKey.toBase58()}
             className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-md"
@@ -362,9 +374,12 @@ export default function Home() {
 
             <CardFooter className="flex justify-end px-4 py-2 space-x-4">
               <button
+                value={edtTitle}
+                // onChange={(e) => setEdtTitle(e.target.value)}
                 onClick={() => {
                   setEdtTitle(note.account.title);
                   setEdtMessage(note.account.message);
+                  updateNote(note);
                 }}
                 className="hover:text-blue-600"
               >
