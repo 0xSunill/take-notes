@@ -158,7 +158,7 @@ export default function Home() {
     return new Program(
       IDL as Idl,
       PROGRAM_ID,
-      new AnchorProvider(connection, wallet as Wallet, {})
+      new AnchorProvider(connection, wallet as unknown as Wallet, {})
     );
   }, [wallet, connection]);
 
@@ -218,7 +218,7 @@ export default function Home() {
         .createNote(title, message)
         .accounts({
           noteEntry: noteAddress,
-          owner: wallet.publicKey,
+          owner: wallet.publicKey ?? undefined,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -257,7 +257,7 @@ export default function Home() {
         .updateNote(note.account.title, edtMessage)
         .accounts({
           noteEntry: noteAddress,
-          owner: wallet.publicKey,
+          owner: wallet.publicKey ?? undefined,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
@@ -289,7 +289,7 @@ export default function Home() {
         .deleteNote(note.account.title)
         .accounts({
           noteEntry: noteAddress,
-          owner: wallet.publicKey,
+          owner: wallet.publicKey ?? undefined,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
